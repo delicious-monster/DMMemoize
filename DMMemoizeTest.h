@@ -13,5 +13,6 @@
 
 - (void)testBasicCaching;
 - (void)testRecursiveGenerator;
+- (void)testConcurrency;
 
 @end

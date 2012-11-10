@@ -40,6 +40,8 @@
  * container with a hash that's a function of its elements' hashes. A composite string can serve this purpose
  * (e.g. [NSString stringWithFormat:@"%@ %@", arg1, arg2]), though of course be careful to avoid ambiguous
  * situations (i.e. for the above example, key=@"A B C" is the same for [@"A B", @"C"] and [@"A", @"B C"]).
+ *
+ * This code is thread-safe. The generator block will be called exactly once per cacheKey.
  */
 + (id)cachedValueForKey:(id)cacheKey storageOwner:(id)cacheOwner token:(void *)staticToken generator:(id(^)(void))generatorBlock __attribute__((nonnull(2,3,4)));
 

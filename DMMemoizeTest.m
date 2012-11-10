@@ -26,15 +26,16 @@
     static char token;
     return [DMMemoize cachedValueForKey:str storageOwner:self token:&token generator:^id{
         BOOL hasSeenKey;
-        if (!_argHistory)
-            _argHistory = [NSMutableArray array];
-        if (!_argSet)
-            _argSet = [NSMutableSet set];
+        @synchronized(self) {
+            if (!_argHistory)
+                _argHistory = [NSMutableArray array];
+            if (!_argSet)
+                _argSet = [NSMutableSet set];
 
-        [_argHistory addObject:str];
-        hasSeenKey = [_argSet containsObject:str];
-        [_argSet addObject:str];
-
+            [_argHistory addObject:str];
+            hasSeenKey = [_argSet containsObject:str];
+            [_argSet addObject:str];
+        }
         NSCParameterAssert(!hasSeenKey);
 
         if ([str isEqual:@"nil"])
@@ -57,7 +58,7 @@
 
 - (NSArray *)generatorHistory;
 {
-    return [_argHistory copy];
+    @synchronized(self) { return [_argHistory copy]; }
 }
 
 @end
@@ -97,6 +98,35 @@
     STAssertEqualObjects([ct morphString:@"recurse"], @"recursesubsub", @"Recursion musn't deadlock");
     STAssertEqualObjects([ct morphString:@"recurse"], @"recursesubsub", @"Recursion musn't deadlock");
     STAssertEqualObjects([ct generatorHistory], (@[@"recurse", @"sub"]), nil);
+}
+
+- (void)testConcurrency;
+{
+    CacheTest *ct = [[CacheTest alloc] init];
+
+    const uint32_t maxArgs = 32;
+    dispatch_block_t testBlock1 = [^{ @autoreleasepool {
+        for (NSUInteger i = 0; i < 64; i++) {
+            NSString *input = [NSString stringWithFormat:@"stress %u", (arc4random() % maxArgs)];
+            STAssertEqualObjects([ct morphString:input], [input stringByAppendingString:input], nil);
+        }
+    }} copy];
+    dispatch_block_t testBlock2 = [^{ @autoreleasepool {
+        for (NSUInteger i = 0; i < 64; i++) {
+            NSString *input = [NSString stringWithFormat:@"stress %u", (arc4random() % maxArgs)];
+            STAssertEqualObjects([ct uppercaseString:input], [input uppercaseString], nil);
+        }
+    }} copy];
+
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_queue_t queue = dispatch_get_global_queue(0, 0);
+    for (NSUInteger i = 0; i < 51200; i++) {
+        dispatch_group_async(group, queue, testBlock1);
+        dispatch_group_async(group, queue, testBlock2);
+    }
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+
+    STAssertTrue([[ct generatorHistory] count] <= maxArgs, nil); // <= because there is randomness
 }
 
 @end
