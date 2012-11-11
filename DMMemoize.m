@@ -16,10 +16,8 @@
 + (id)cachedValueForKey:(id)cacheKey storageOwner:(id)cacheOwner token:(void *)staticToken generator:(id(^)(void))generatorBlock;
 {
     static dispatch_once_t onceToken;
-    static dispatch_semaphore_t globalMutex; // locked while looking up or creating the per-owner mutex
     static id nilMarker;
     dispatch_once(&onceToken, ^{
-        globalMutex = dispatch_semaphore_create(1);
         nilMarker = [NSObject new];
     });
 
@@ -29,8 +27,9 @@
 
     const id nonNilCacheKey = cacheKey ? : nilMarker;
 
+    static OSSpinLock globalSpinLock = OS_SPINLOCK_INIT; // locked while looking up or creating the per-owner mutex
     // Take the global lock during creation or look-up of finer-grained cacheStorage mutex
-    dispatch_semaphore_wait(globalMutex, DISPATCH_TIME_FOREVER);
+    OSSpinLockLock(&globalSpinLock);
     NSMapTable *cacheStorage = objc_getAssociatedObject(cacheOwner, staticToken);
     if (!cacheStorage) {
         cacheStorage = [NSMapTable strongToStrongObjectsMapTable];
@@ -43,7 +42,7 @@
         cacheStorageMutex = dispatch_semaphore_create(1);
         objc_setAssociatedObject(cacheStorage, &storageMutexAssociationKey, cacheStorageMutex, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    dispatch_semaphore_signal(globalMutex);
+    OSSpinLockUnlock(&globalSpinLock);
 
 
     dispatch_semaphore_wait(cacheStorageMutex, DISPATCH_TIME_FOREVER);

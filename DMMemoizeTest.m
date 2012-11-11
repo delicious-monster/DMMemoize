@@ -102,7 +102,7 @@
 
 - (void)testConcurrency;
 {
-    for (NSUInteger i = 0; i < 51200; i++) {
+    for (NSUInteger i = 0; i < 5120; i++) {
         CacheTest *ct = [[CacheTest alloc] init];
 
         const uint32_t maxArgs = 32;
