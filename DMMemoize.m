@@ -58,19 +58,21 @@
             objc_setAssociatedObject(cacheStorage, &inProgressSemaphoreTableAssociationKey, generatorInProgressSemaphores, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
 
-        dispatch_semaphore_t perKeySemaphore = [generatorInProgressSemaphores objectForKey:nonNilCacheKey];
-        if (perKeySemaphore) {
+        NSMutableArray *waitingSemaphoresArray = [generatorInProgressSemaphores objectForKey:nonNilCacheKey];
+        if (waitingSemaphoresArray) {
             // Another thread is generating the value for this key; wait until it's done.
+            dispatch_semaphore_t myWaitingSemaphore = dispatch_semaphore_create(0);
+            [waitingSemaphoresArray addObject:myWaitingSemaphore];
             dispatch_semaphore_signal(cacheStorageMutex); // unlock while we wait
-            dispatch_semaphore_wait(perKeySemaphore, DISPATCH_TIME_FOREVER);
+            dispatch_semaphore_wait(myWaitingSemaphore, DISPATCH_TIME_FOREVER);
             dispatch_semaphore_wait(cacheStorageMutex, DISPATCH_TIME_FOREVER);
 
             cachedValue = [cacheStorage objectForKey:nonNilCacheKey];
 
         } else {
             // We are responsible for generating this key. Create a semaphore so others can wait on us.
-            perKeySemaphore = dispatch_semaphore_create(0);
-            [generatorInProgressSemaphores setObject:perKeySemaphore forKey:nonNilCacheKey];
+            waitingSemaphoresArray = [NSMutableArray array];
+            [generatorInProgressSemaphores setObject:waitingSemaphoresArray forKey:nonNilCacheKey];
 
             // Unlock before we call back into client code, because the generator could use other cached values
             dispatch_semaphore_signal(cacheStorageMutex);
@@ -84,7 +86,8 @@
                 // Dispose of empty semaphore table
                 objc_setAssociatedObject(cacheStorage, &inProgressSemaphoreTableAssociationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-            while (dispatch_semaphore_signal(perKeySemaphore)); // signal all waiters (though they will immediately go back to sleep on cacheStorageMutex)
+            for (dispatch_semaphore_t waitingSemaphore in waitingSemaphoresArray)
+                dispatch_semaphore_signal(waitingSemaphore); // signal all waiters (though they will immediately go back to sleep on cacheStorageMutex)
         }
     }
     dispatch_semaphore_signal(cacheStorageMutex);
