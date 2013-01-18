@@ -8,6 +8,7 @@
 
 #import "DMMemoize.h"
 
+#import <libkern/OSAtomic.h>
 #import <objc/runtime.h>
 
 
